@@ -31,7 +31,23 @@ export async function sendMessage(conversationId, content) {
   )
   if (!res.ok) throw new Error(`API error ${res.status}`)
   const data = await res.json()
-  return data.content || data.message || data.response || JSON.stringify(data)
+  return {
+    reply: data.content || data.message || data.response || JSON.stringify(data),
+    sensitive: isSensitiveContent(data.content || ''),
+  }
+}
+
+// ── Detect sensitive/embarrassing content for softer voice ────
+const SENSITIVE_KEYWORDS = [
+  'bv', 'bacterial vaginosis', 'discharge', 'fishy', 'smell', 'odour', 'odor',
+  'antibiotics', 'prescription', 'pharmacy', 'embarrassing', 'mortifying',
+  'itching', 'irritation', 'vaginal', 'intimate', 'awkward',
+  "don't ask", 'too much', 'oversharing', 'more than i intended',
+]
+
+function isSensitiveContent(text) {
+  const lower = text.toLowerCase()
+  return SENSITIVE_KEYWORDS.some(kw => lower.includes(kw))
 }
 
 // ── Create new conversation ────────────────────────────────────
@@ -53,10 +69,16 @@ export async function createConversation() {
 }
 
 // ── ElevenLabs TTS ────────────────────────────────────────────
-export async function speakText(text) {
+// sensitive=true → softer, slower, more timid voice
+export async function speakText(text, sensitive = false) {
   if (!text?.trim()) return
 
   const sentences = text.match(/[^.!?]+[.!?]*/g) || [text]
+
+  // Normal voice: confident & clear. Sensitive voice: soft, slower, timid.
+  const voiceSettings = sensitive
+    ? { stability: 0.82, similarity_boost: 0.72, style: 0.18, use_speaker_boost: false, speed: 0.88 }
+    : { stability: 0.5,  similarity_boost: 0.75, style: 0.0,  use_speaker_boost: true,  speed: 1.0  }
 
   const fetchAudio = async (sentence) => {
     const res = await fetch(
@@ -70,7 +92,7 @@ export async function speakText(text) {
         body: JSON.stringify({
           text: sentence.trim(),
           model_id: CONFIG.ELEVENLABS_MODEL,
-          voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+          voice_settings: voiceSettings,
         }),
       }
     )
