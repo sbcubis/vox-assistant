@@ -52,7 +52,6 @@ export default function App() {
     const msg = { role, content, ts: Date.now() }
     setMessages(prev => {
       const updated = [...prev, msg]
-      // Trim to memory limit (pairs, so limit * 2)
       return updated.slice(-(memoryLimit * 2))
     })
     return msg
@@ -75,12 +74,17 @@ export default function App() {
 
     try {
       const convId = await ensureConversation()
-      const response = await sendMessage(convId, text)
-      addMessage('assistant', response)
+      // sendMessage now returns { reply, sensitive }
+      const result = await sendMessage(convId, text)
+      const reply = typeof result === 'string' ? result : result.reply
+      const sensitive = typeof result === 'object' ? (result.sensitive || false) : false
+
+      addMessage('assistant', reply)
 
       if (voiceEnabled) {
         setMicState('playing')
-        await speakText(response)
+        // Pass sensitive flag so TTS uses softer voice settings
+        await speakText(reply, sensitive)
       }
     } catch (e) {
       console.error('Send error:', e)
@@ -92,7 +96,6 @@ export default function App() {
   const handleFinalTranscript = useCallback(async (audioBlob, liveTranscript) => {
     let finalText = liveTranscript?.trim()
 
-    // Try Whisper for better accuracy if we have audio
     if (audioBlob && CONFIG.OPENAI_API_KEY !== 'YOUR_OPENAI_API_KEY') {
       try {
         finalText = await transcribeAudio(audioBlob) || finalText
